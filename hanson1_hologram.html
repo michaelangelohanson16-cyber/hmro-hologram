@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>H = 277η — Hanson-1 Capacity Surface</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    cursor: crosshair;
+  }
+
+  #canvas-container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+
+  canvas { display: block; }
+
+  /* HUD overlays */
+  .hud {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
+  .equation-block {
+    position: absolute;
+    top: 32px; left: 40px;
+    color: rgba(100, 210, 255, 0.9);
+    letter-spacing: 0.08em;
+  }
+  .eq-main {
+    font-size: 28px;
+    font-weight: bold;
+    text-shadow: 0 0 20px rgba(100,210,255,0.8), 0 0 40px rgba(100,210,255,0.4);
+    animation: flicker 8s infinite;
+  }
+  .eq-sub {
+    font-size: 11px;
+    color: rgba(100,210,255,0.55);
+    margin-top: 6px;
+    letter-spacing: 0.15em;
+  }
+
+  .scan-line {
+    position: absolute;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(100,210,255,0.0) 20%,
+      rgba(100,210,255,0.3) 50%,
+      rgba(100,210,255,0.0) 80%,
+      transparent 100%);
+    animation: scandown 6s linear infinite;
+  }
+
+  .corner-bracket {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    border-color: rgba(100,210,255,0.4);
+    border-style: solid;
+  }
+  .corner-bracket.tl { top: 16px; left: 16px; border-width: 2px 0 0 2px; }
+  .corner-bracket.tr { top: 16px; right: 16px; border-width: 2px 2px 0 0; }
+  .corner-bracket.bl { bottom: 16px; left: 16px; border-width: 0 0 2px 2px; }
+  .corner-bracket.br { bottom: 16px; right: 16px; border-width: 0 2px 2px 0; }
+
+  .data-readout {
+    position: absolute;
+    bottom: 36px;
+    left: 40px;
+    color: rgba(100,210,255,0.6);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    line-height: 1.8;
+  }
+
+  .data-readout span {
+    color: rgba(100,210,255,0.95);
+  }
+
+  .status-bar {
+    position: absolute;
+    bottom: 36px;
+    right: 40px;
+    text-align: right;
+    color: rgba(100,210,255,0.45);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    line-height: 1.8;
+  }
+
+  .title-block {
+    position: absolute;
+    top: 32px;
+    right: 40px;
+    text-align: right;
+    color: rgba(100,210,255,0.5);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    line-height: 1.8;
+  }
+
+  .title-block .book-title {
+    color: rgba(100,210,255,0.85);
+    font-size: 11px;
+  }
+
+  .center-crosshair {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px; height: 20px;
+    opacity: 0.15;
+  }
+  .center-crosshair::before, .center-crosshair::after {
+    content: '';
+    position: absolute;
+    background: rgba(100,210,255,0.8);
+  }
+  .center-crosshair::before { width: 1px; height: 100%; left: 50%; }
+  .center-crosshair::after  { width: 100%; height: 1px; top: 50%; }
+
+  /* Grid overlay */
+  .grid-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-image:
+      linear-gradient(rgba(100,210,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(100,210,255,0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+  }
+
+  /* Vignette */
+  .vignette {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: radial-gradient(ellipse at center,
+      transparent 50%,
+      rgba(0,0,0,0.7) 100%);
+    pointer-events: none;
+  }
+
+  .drag-hint {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, 180px);
+    color: rgba(100,210,255,0.3);
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    animation: fadeHint 4s ease-out forwards;
+  }
+
+  @keyframes scandown {
+    0%   { top: -1px; opacity: 0; }
+    5%   { opacity: 1; }
+    95%  { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+
+  @keyframes flicker {
+    0%, 95%, 100% { opacity: 1; }
+    96%  { opacity: 0.85; }
+    97%  { opacity: 1; }
+    98%  { opacity: 0.9; }
+  }
+
+  @keyframes fadeHint {
+    0%   { opacity: 0.3; }
+    60%  { opacity: 0.3; }
+    100% { opacity: 0; }
+  }
+
+  .pulse-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: rgba(100,210,255,0.8);
+    transform: translate(-50%, -50%);
+    animation: pulse 3s infinite;
+  }
+
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(100,210,255,0.5); }
+    70%  { box-shadow: 0 0 0 20px rgba(100,210,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(100,210,255,0); }
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container">
+  <canvas id="c"></canvas>
+
+  <div class="grid-overlay"></div>
+  <div class="vignette"></div>
+  <div class="scan-line"></div>
+
+  <div class="hud">
+    <!-- Corner brackets -->
+    <div class="corner-bracket tl"></div>
+    <div class="corner-bracket tr"></div>
+    <div class="corner-bracket bl"></div>
+    <div class="corner-bracket br"></div>
+
+    <!-- Equation -->
+    <div class="equation-block">
+      <div class="eq-main">H = 277&eta;</div>
+      <div class="eq-sub">BACKING STORE FRAME CAPACITY THEOREM</div>
+      <div class="eq-sub" style="margin-top:2px;">B&#x2098;&#x209B; = 5,000 MB/s &nbsp;·&nbsp; F&#x2098;&#x1D6E5;&#x209C;&#x2B3; = 0.3 MB &nbsp;·&nbsp; R&#x2B3;&#x2091;&#x2081; = 60 fps</div>
+    </div>
+
+    <!-- Title -->
+    <div class="title-block">
+      <div class="book-title">HMRO FRAMEWORK</div>
+      <div>CHAPTER SEVEN</div>
+      <div>FIGURE 7.X</div>
+      <div style="margin-top:6px; color:rgba(100,210,255,0.25);">HANSON-1 SOVEREIGN</div>
+      <div style="color:rgba(100,210,255,0.25);">COMPUTE ARCHITECTURE</div>
+    </div>
+
+    <!-- Data readout -->
+    <div class="data-readout">
+      <div>H<sub>MAX</sub> &nbsp;<span>277</span> &nbsp;SURFACES @ &eta;=1.0</div>
+      <div>&eta;<sub>MIN</sub> &nbsp;<span>0.0036</span> &nbsp;FLOOR THRESHOLD</div>
+      <div>H<sub>240fps</sub> &nbsp;<span>69</span> &nbsp;SURFACES @ 240Hz</div>
+      <div style="margin-top:6px; color:rgba(100,210,255,0.25);">DRAG TO ROTATE &nbsp;·&nbsp; SCROLL TO ZOOM</div>
+    </div>
+
+    <!-- Status -->
+    <div class="status-bar">
+      <div>SURFACE PARAMS &nbsp;<span style="color:rgba(100,210,255,0.8);">60×60</span></div>
+      <div>RENDER MODE &nbsp;<span style="color:rgba(100,210,255,0.8);">HOLOGRAPHIC</span></div>
+      <div>COORDINATE SPACE &nbsp;<span style="color:rgba(100,210,255,0.8);">&eta; × fps × H</span></div>
+      <div style="margin-top:6px; color:rgba(100,210,255,0.2);" id="fps-counter">FPS —</div>
+    </div>
+
+    <div class="center-crosshair"></div>
+    <div class="drag-hint">DRAG TO ROTATE</div>
+    <div class="pulse-ring"></div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+const RAW = {"eta": [0.0036, 0.01, 0.0227, 0.0482, 0.0609, 0.0736, 0.0991, 0.1118, 0.1245, 0.15, 0.1627, 0.1755, 0.2009, 0.2136, 0.2264, 0.2518, 0.2645, 0.2773, 0.3027, 0.3155, 0.3282, 0.3536, 0.3664, 0.3791, 0.4045, 0.4173, 0.43, 0.4555, 0.4682, 0.4809, 0.5064, 0.5191, 0.5318, 0.5573, 0.57, 0.5827, 0.6082, 0.6209, 0.6336, 0.6591, 0.6718, 0.6845, 0.71, 0.7227, 0.7355, 0.7609, 0.7736, 0.7864, 0.8118, 0.8245, 0.8373, 0.8627, 0.8755, 0.8882, 0.9136, 0.9264, 0.9391, 0.9645, 0.9773, 1.0], "fps": [24.0, 24.0, 30.0, 30.0, 60.0, 65.0, 65.0, 70.0, 75.0, 75.0, 80.0, 85.0, 85.0, 90.0, 95.0, 95.0, 100.0, 100.0, 105.0, 110.0, 110.0, 115.0, 120.0, 120.0, 125.0, 130.0, 130.0, 135.0, 140.0, 140.0, 145.0, 145.0, 150.0, 155.0, 155.0, 160.0, 165.0, 165.0, 170.0, 175.0, 175.0, 180.0, 185.0, 185.0, 190.0, 190.0, 195.0, 200.0, 200.0, 205.0, 210.0, 210.0, 215.0, 220.0, 220.0, 225.0, 230.0, 230.0, 235.0, 240.0]};
+
+const NE = RAW.eta.length;
+const NF = RAW.fps.length;
+
+// Recompute H analytically for a clean grid
+// H = (5000 / (0.3 * fps)) * eta
+const etaVals = RAW.eta;
+const fpsVals = RAW.fps;
+
+// ─── THREE.JS SETUP ───────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 1);
+renderer.shadowMap.enabled = true;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000000, 0.035);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(4.5, 3.5, 5.5);
+camera.lookAt(0, 0.5, 0);
+
+// ─── SURFACE GEOMETRY ────────────────────────────────────────────────────────
+function buildSurface() {
+  const geo = new THREE.BufferGeometry();
+  const positions = [];
+  const colors = [];
+  const indices = [];
+
+  const W = 4.0, D = 4.0, HSCALE = 2.2;
+  const H_MAX = 277.0;
+
+  // Vertices
+  for (let i = 0; i < NE; i++) {
+    for (let j = 0; j < NF; j++) {
+      const eta = etaVals[i];
+      const fps = fpsVals[j];
+      const H = Math.min((5000 / (0.3 * fps)) * eta, 694.4);
+
+      const x = (i / (NE - 1) - 0.5) * W;
+      const z = (j / (NF - 1) - 0.5) * D;
+      const y = (H / H_MAX) * HSCALE;
+
+      positions.push(x, y, z);
+
+      // Holographic color: deep void -> electric cyan -> white peak
+      const t = H / H_MAX;
+      let r, g, b;
+      if (t < 0.15) {
+        // near-black to deep blue
+        r = t / 0.15 * 0.02;
+        g = t / 0.15 * 0.08;
+        b = t / 0.15 * 0.25;
+      } else if (t < 0.45) {
+        const s = (t - 0.15) / 0.30;
+        r = 0.02 + s * 0.05;
+        g = 0.08 + s * 0.55;
+        b = 0.25 + s * 0.65;
+      } else if (t < 0.75) {
+        const s = (t - 0.45) / 0.30;
+        r = 0.07 + s * 0.40;
+        g = 0.63 + s * 0.30;
+        b = 0.90 + s * 0.08;
+      } else {
+        const s = (t - 0.75) / 0.25;
+        r = 0.47 + s * 0.53;
+        g = 0.93 + s * 0.07;
+        b = 0.98 + s * 0.02;
+      }
+      colors.push(r, g, b);
+    }
+  }
+
+  // Indices (triangles)
+  for (let i = 0; i < NE - 1; i++) {
+    for (let j = 0; j < NF - 1; j++) {
+      const a = i * NF + j;
+      const b = a + 1;
+      const c = a + NF;
+      const d = c + 1;
+      indices.push(a, c, b);
+      indices.push(b, c, d);
+    }
+  }
+
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+const surfGeo = buildSurface();
+
+// Main surface material — translucent holographic
+const surfMat = new THREE.MeshPhongMaterial({
+  vertexColors: true,
+  side: THREE.DoubleSide,
+  transparent: true,
+  opacity: 0.72,
+  shininess: 120,
+  specular: new THREE.Color(0.3, 0.8, 1.0),
+  emissive: new THREE.Color(0.01, 0.04, 0.08),
+});
+const surfMesh = new THREE.Mesh(surfGeo, surfMat);
+scene.add(surfMesh);
+
+// Wireframe overlay
+const wireMat = new THREE.MeshBasicMaterial({
+  color: 0x40d0ff,
+  wireframe: true,
+  transparent: true,
+  opacity: 0.06,
+});
+const wireMesh = new THREE.Mesh(surfGeo, wireMat);
+scene.add(wireMesh);
+
+// ─── FLOOR GRID ───────────────────────────────────────────────────────────────
+const gridHelper = new THREE.GridHelper(4.5, 20, 0x0a2a3a, 0x0a1a24);
+gridHelper.position.y = -0.02;
+scene.add(gridHelper);
+
+// Floor mirror (faint reflection)
+const floorGeo = new THREE.PlaneGeometry(4.5, 4.5);
+const floorMat = new THREE.MeshBasicMaterial({
+  color: 0x001a24,
+  transparent: true,
+  opacity: 0.3,
+  side: THREE.DoubleSide,
+});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -0.02;
+scene.add(floor);
+
+// ─── ANNOTATION SPIKES ────────────────────────────────────────────────────────
+function addSpike(etaVal, fpsVal, color, label) {
+  const W = 4.0, D = 4.0, HSCALE = 2.2, H_MAX = 277.0;
+  const iRatio = (etaVal - etaVals[0]) / (etaVals[NE-1] - etaVals[0]);
+  const jRatio = (fpsVal - fpsVals[0]) / (fpsVals[NF-1] - fpsVals[0]);
+  const H = Math.min((5000 / (0.3 * fpsVal)) * etaVal, H_MAX);
+  const x = (iRatio - 0.5) * W;
+  const z = (jRatio - 0.5) * D;
+  const y = (H / H_MAX) * HSCALE;
+
+  // Vertical line
+  const pts = [new THREE.Vector3(x, -0.02, z), new THREE.Vector3(x, y, z)];
+  const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+  const lineMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 });
+  scene.add(new THREE.Line(lineGeo, lineMat));
+
+  // Dot at top
+  const dotGeo = new THREE.SphereGeometry(0.04, 12, 12);
+  const dotMat = new THREE.MeshBasicMaterial({ color });
+  const dot = new THREE.Mesh(dotGeo, dotMat);
+  dot.position.set(x, y, z);
+  scene.add(dot);
+
+  // Glow ring
+  const ringGeo = new THREE.RingGeometry(0.06, 0.10, 24);
+  const ringMat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.position.set(x, y + 0.001, z);
+  ring.rotation.x = -Math.PI / 2;
+  scene.add(ring);
+}
+
+addSpike(1.0, 60.0,  0xff8040, 'H=277'); // canonical
+addSpike(0.0036, 60.0, 0xff3030, 'ηmin'); // floor
+addSpike(1.0, 240.0, 0xaa80ff, 'H=69');  // 240fps
+
+// ─── RIDGE LINES ─────────────────────────────────────────────────────────────
+function buildRidge(fixedEta, fixedFps, color) {
+  const W = 4.0, D = 4.0, HSCALE = 2.2, H_MAX = 277.0;
+  const pts = [];
+
+  if (fixedFps !== null) {
+    // vary eta, fix fps
+    const jRatio = (fixedFps - fpsVals[0]) / (fpsVals[NF-1] - fpsVals[0]);
+    const z = (jRatio - 0.5) * D;
+    for (let i = 0; i < NE; i++) {
+      const eta = etaVals[i];
+      const H = Math.min((5000 / (0.3 * fixedFps)) * eta, H_MAX);
+      const x = (i / (NE - 1) - 0.5) * W;
+      const y = (H / H_MAX) * HSCALE;
+      pts.push(new THREE.Vector3(x, y, z));
+    }
+  } else {
+    // vary fps, fix eta
+    const iRatio = (fixedEta - etaVals[0]) / (etaVals[NE-1] - etaVals[0]);
+    const x = (iRatio - 0.5) * W;
+    for (let j = 0; j < NF; j++) {
+      const fps = fpsVals[j];
+      const H = Math.min((5000 / (0.3 * fps)) * fixedEta, H_MAX);
+      const z = (j / (NF - 1) - 0.5) * D;
+      const y = (H / H_MAX) * HSCALE;
+      pts.push(new THREE.Vector3(x, y, z));
+    }
+  }
+
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85, linewidth: 2 });
+  return new THREE.Line(geo, mat);
+}
+
+scene.add(buildRidge(null, 60.0,  0xff7733)); // fps=60 ridge (orange)
+scene.add(buildRidge(1.0,  null,  0x33aaff)); // eta=1 ridge (blue)
+
+// ─── LIGHTS ───────────────────────────────────────────────────────────────────
+const ambLight = new THREE.AmbientLight(0x001a2e, 1.2);
+scene.add(ambLight);
+
+const topLight = new THREE.DirectionalLight(0x40d0ff, 1.8);
+topLight.position.set(3, 8, 4);
+scene.add(topLight);
+
+const rimLight = new THREE.DirectionalLight(0x0040ff, 0.8);
+rimLight.position.set(-4, 2, -3);
+scene.add(rimLight);
+
+const fillLight = new THREE.PointLight(0x00ffcc, 0.5, 12);
+fillLight.position.set(0, 4, 0);
+scene.add(fillLight);
+
+// Moving scan light (hologram effect)
+const scanLight = new THREE.PointLight(0x00d4ff, 1.2, 6);
+scene.add(scanLight);
+
+// ─── PARTICLE FIELD ───────────────────────────────────────────────────────────
+const particleCount = 600;
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(particleCount * 3);
+for (let i = 0; i < particleCount; i++) {
+  pPos[i * 3]     = (Math.random() - 0.5) * 14;
+  pPos[i * 3 + 1] = (Math.random() - 0.5) * 8;
+  pPos[i * 3 + 2] = (Math.random() - 0.5) * 14;
+}
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+const pMat = new THREE.PointsMaterial({
+  color: 0x20a0c0,
+  size: 0.018,
+  transparent: true,
+  opacity: 0.35,
+});
+scene.add(new THREE.Points(pGeo, pMat));
+
+// ─── MOUSE INTERACTION ────────────────────────────────────────────────────────
+let isDragging = false;
+let prevX = 0, prevY = 0;
+let rotY = 0.3, rotX = 0.15;
+let targetRotY = rotY, targetRotX = rotX;
+let zoom = 1.0, targetZoom = 1.0;
+
+canvas.addEventListener('mousedown', e => { isDragging = true; prevX = e.clientX; prevY = e.clientY; });
+canvas.addEventListener('mouseup', () => { isDragging = false; });
+canvas.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  targetRotY += (e.clientX - prevX) * 0.008;
+  targetRotX += (e.clientY - prevY) * 0.005;
+  targetRotX = Math.max(-0.5, Math.min(0.8, targetRotX));
+  prevX = e.clientX; prevY = e.clientY;
+});
+canvas.addEventListener('wheel', e => {
+  targetZoom *= (e.deltaY > 0) ? 1.08 : 0.93;
+  targetZoom = Math.max(0.4, Math.min(2.5, targetZoom));
+}, { passive: true });
+
+// Touch
+canvas.addEventListener('touchstart', e => {
+  isDragging = true;
+  prevX = e.touches[0].clientX;
+  prevY = e.touches[0].clientY;
+});
+canvas.addEventListener('touchend', () => { isDragging = false; });
+canvas.addEventListener('touchmove', e => {
+  if (!isDragging) return;
+  targetRotY += (e.touches[0].clientX - prevX) * 0.008;
+  targetRotX += (e.touches[0].clientY - prevY) * 0.005;
+  targetRotX = Math.max(-0.5, Math.min(0.8, targetRotX));
+  prevX = e.touches[0].clientX;
+  prevY = e.touches[0].clientY;
+}, { passive: true });
+
+// ─── ANIMATION ───────────────────────────────────────────────────────────────
+const pivot = new THREE.Group();
+pivot.add(surfMesh);
+pivot.add(wireMesh);
+scene.add(pivot);
+
+let frame = 0, lastTime = performance.now(), fps = 60;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+  fps = fps * 0.9 + (1 / dt) * 0.1;
+  frame++;
+
+  // Smooth rotation
+  rotY += (targetRotY - rotY) * 0.06;
+  rotX += (targetRotX - rotX) * 0.06;
+  zoom += (targetZoom - zoom) * 0.06;
+
+  // Auto-rotate when idle
+  if (!isDragging) targetRotY += 0.0018;
+
+  pivot.rotation.y = rotY;
+  pivot.rotation.x = rotX;
+
+  // Zoom via camera
+  const base = new THREE.Vector3(4.5, 3.5, 5.5).normalize();
+  const dist = 9.5 * zoom;
+  camera.position.copy(base.multiplyScalar(dist));
+  camera.lookAt(0, 0.5, 0);
+
+  // Scanning light
+  const t = now * 0.001;
+  scanLight.position.set(
+    Math.sin(t * 0.7) * 3,
+    2 + Math.sin(t * 0.4) * 1.5,
+    Math.cos(t * 0.5) * 3
+  );
+  scanLight.intensity = 0.8 + Math.sin(t * 1.2) * 0.3;
+
+  // Surface opacity pulse
+  surfMat.opacity = 0.68 + Math.sin(t * 0.8) * 0.04;
+
+  // FPS counter
+  if (frame % 30 === 0) {
+    document.getElementById('fps-counter').textContent = `FPS ${Math.round(fps)}`;
+  }
+
+  renderer.render(scene, camera);
+}
+
+// ─── RESIZE ───────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>
